@@ -5,12 +5,12 @@ import { useAccesly } from "accesly";
 import AuthModal from "@/components/layout/AuthModal";
 import { useSession, signOut } from "next-auth/react";
 import { ShoppingCart } from "lucide-react";
-import { useCart } from "@/store/cartStore";
+import { useCartStore } from "@/store/cartStore";
 
 const linksBase = [
-  { label: "Comunidad",    href: "/comunidad" },
-  { label: "Tienda",       href: "/tienda" },
-  { label: "Quiz de Rizos", href: "/quiz" },
+  { label: "Comunidad", href: "/comunidad" },
+  { label: "Tienda", href: "/tienda" },
+  { label: "Diagnóstico", href: "/diagnostico" },
   { label: "Profesionales", href: "/estilistas" },
 ];
 
@@ -27,10 +27,13 @@ export default function Navbar() {
   const { data: session } = useSession();
 
   const estaLogueado = !!wallet || !!session?.user;
+  const userRole = (session?.user as { role?: string } | undefined)?.role;
+  const esProfesional = userRole === "ESTILISTA" || userRole === "PROFESIONAL";
   const userInicial = wallet?.email?.[0]?.toUpperCase()
     || session?.user?.name?.[0]?.toUpperCase()
     || "U";
-  const { count: cartCount } = useCart();
+const cartItems = useCartStore((state: any) => state.items ?? []);
+const cartCount = cartItems.length;
 
   const handleDesconectar = () => {
     setDropdownOpen(false);
@@ -66,6 +69,11 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+            {esProfesional && (
+              <Link href="/agenda" className="text-sm text-[#4E342E] hover:text-[#8D6E63] transition-colors">
+                Mi agenda
+              </Link>
+            )}
           </div>
 
           {/* Derecha */}
@@ -138,6 +146,11 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+            {esProfesional && (
+              <Link href="/agenda" className="text-sm text-[#4E342E]" onClick={() => setMenuOpen(false)}>
+                Mi agenda
+              </Link>
+            )}
             {estaLogueado ? (
               <button onClick={handleDesconectar}
                 className="text-sm text-[#8D6E63] text-left">

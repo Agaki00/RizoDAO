@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccesly } from "accesly";
 import { useSession } from "next-auth/react";
+import { saveGuestProfile, clearGuestProfile } from "@/lib/guestCurlProfile";
 
 const tiposCabello = [
   { id: "2a", titulo: "2A — Ondulado suave", desc: "Ondas ligeras en forma de S, cabello fino" },
@@ -23,9 +23,7 @@ const roles = [
 
 export default function OnboardingFlow() {
   const router = useRouter();
-  const { wallet } = useAccesly();
   const { data: session, status } = useSession();
-  const userEmail = wallet?.email || session?.user?.email || null;
   const [paso, setPaso] = useState(1);
   const [rol, setRol] = useState("");
   const [tipoCabello, setTipoCabello] = useState("");
@@ -58,37 +56,39 @@ export default function OnboardingFlow() {
     paso === 2 ? !tipoCabello :
     !nombre;
 
-  const handleEmpezar = async () => {
-    // Obtener identidad: email de sesión, wallet, o userId de localStorage
-    const email = userEmail;
-    const userId = typeof window !== "undefined" ? localStorage.getItem("rizoUserId") : null;
-
-    console.log("[Onboarding] submit →", { email, userId, sessionStatus: status, nombre, rol, tipoCabello });
-
+ const handleEmpezar = async () => {
     if (!nombre.trim()) return;
-    if (!email && !userId) {
-      console.warn("[Onboarding] Sin identidad de usuario — redirigiendo de todas formas");
+
+    const profileData = { 
+      nombre, 
+      bio, 
+      rol: rol.toUpperCase(), 
+      tipoCabello 
+    };
+
+    // — Modo invitado: si no hay sesión iniciada, persistir en localStorage
+    if (!session?.user) {
+      console.warn("[Onboarding] Sin sesión activa — guardando perfil en localStorage");
+      saveGuestProfile(profileData);
       router.push("/comunidad");
       return;
     }
 
+    // — Modo autenticado: guardar directo en la base de datos
     setGuardando(true);
-
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (email)  headers["x-user-email"] = email;
-    if (userId) headers["x-user-id"]    = userId;
 
     try {
       const res = await fetch("/api/user/update", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ nombre, bio, rol, tipoCabello }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileData),
       });
-      const data = await res.json().catch(() => ({}));
-      console.log("[Onboarding] respuesta API →", res.status, data);
+
+      await res.json().catch(() => ({}));
+      clearGuestProfile();
       router.push("/comunidad");
     } catch (error) {
-      console.error("[Onboarding] error de red:", error);
+      console.error("[Onboarding] Error de red:", error);
       router.push("/comunidad");
     } finally {
       setGuardando(false);

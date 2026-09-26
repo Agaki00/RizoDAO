@@ -1,8 +1,11 @@
 "use client";
+
 import { AcceslyProvider, useAccesly } from "accesly";
 import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { CartProvider } from "@/store/cartStore";
+import { migrateGuestProfile } from "@/lib/guestCurlProfile";
+
+const AcceslyProviderAny = AcceslyProvider as any;
 
 function AuthHandler({ children }: { children: React.ReactNode }) {
   const { wallet } = useAccesly();
@@ -29,7 +32,10 @@ function AuthHandler({ children }: { children: React.ReactNode }) {
         }),
       })
         .then((res) => res.json())
-        .then((data) => {
+        .then(async (data) => {
+          if (wallet.email) {
+            await migrateGuestProfile({ email: wallet.email });
+          }
           if (data.isNew) {
             router.push("/onboarding");
           } else {
@@ -45,16 +51,12 @@ function AuthHandler({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <AcceslyProvider
-      appId={process.env.NEXT_PUBLIC_ACCESLY_APP_ID!}
-      network="testnet"
-      theme="light"
-    >
-      <CartProvider>
-        <AuthHandler>{children}</AuthHandler>
-      </CartProvider>
-    </AcceslyProvider>
+    <AcceslyProviderAny>
+      <AuthHandler>
+        {children}
+      </AuthHandler>
+    </AcceslyProviderAny>
   );
 }
