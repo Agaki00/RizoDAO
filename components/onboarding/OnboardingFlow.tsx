@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccesly } from "accesly";
 import { useSession } from "next-auth/react";
 import { saveGuestProfile, clearGuestProfile } from "@/lib/guestCurlProfile";
 
@@ -24,9 +23,7 @@ const roles = [
 
 export default function OnboardingFlow() {
   const router = useRouter();
-  const { wallet } = useAccesly();
   const { data: session, status } = useSession();
-  const userEmail = wallet?.email || session?.user?.email || null;
   const [paso, setPaso] = useState(1);
   const [rol, setRol] = useState("");
   const [tipoCabello, setTipoCabello] = useState("");
@@ -59,46 +56,39 @@ export default function OnboardingFlow() {
     paso === 2 ? !tipoCabello :
     !nombre;
 
-  const handleEmpezar = async () => {
+ const handleEmpezar = async () => {
     if (!nombre.trim()) return;
 
-    // Collect the completed profile
-    const profileData = { nombre, bio, rol, tipoCabello };
+    const profileData = { 
+      nombre, 
+      bio, 
+      rol: rol.toUpperCase(), 
+      tipoCabello 
+    };
 
-    // ── Guest path: no authenticated user ─────────────────────────────────────
-    // Save to localStorage so the data survives until they register or log in.
-    const email = userEmail;
-    const userId =
-      typeof window !== "undefined" ? localStorage.getItem("rizoUserId") : null;
-
-    if (!email && !userId) {
+    // — Modo invitado: si no hay sesión iniciada, persistir en localStorage
+    if (!session?.user) {
+      console.warn("[Onboarding] Sin sesión activa — guardando perfil en localStorage");
       saveGuestProfile(profileData);
-      // Redirect to the community page; the guest will see their profile
-      // data applied to their account once they sign up or log in.
       router.push("/comunidad");
       return;
     }
 
-    // ── Authenticated path: persist directly to DB ─────────────────────────────
+    // — Modo autenticado: guardar directo en la base de datos
     setGuardando(true);
-
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (email)  headers["x-user-email"] = email;
-    if (userId) headers["x-user-id"]    = userId;
 
     try {
       const res = await fetch("/api/user/update", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(profileData),
       });
+
       await res.json().catch(() => ({}));
-      // If there was a guest profile stored from an earlier guest session,
-      // clear it now — the authoritative data is in the DB.
       clearGuestProfile();
       router.push("/comunidad");
     } catch (error) {
-      console.error("[Onboarding] error de red:", error);
+      console.error("[Onboarding] Error de red:", error);
       router.push("/comunidad");
     } finally {
       setGuardando(false);
