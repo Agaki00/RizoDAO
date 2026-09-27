@@ -1,11 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useAccesly } from "accesly";
 import CreatePost from "@/components/feed/CreatePost";
 import PostCard from "@/components/feed/PostCard";
 import Sidebar from "@/components/feed/Sidebar";
-import { getFollowingIds } from "@/lib/mockFollow";
 
 type Post = {
   id: string;
@@ -47,33 +46,38 @@ export default function ComunidadPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedTab, setFeedTab] = useState<"todos" | "siguiendo">("todos");
-  const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [followingCount, setFollowingCount] = useState(0);
 
+  // The "Siguiendo" tab is resolved server-side from the persisted Follow table
+  // (`GET /api/posts?feed=siguiendo&viewerEmail=...`), so the feed is identical
+  // across devices instead of being derived from localStorage.
   const cargarPosts = useCallback(async () => {
     try {
-      const res = await fetch("/api/posts");
+      const params = new URLSearchParams();
+      if (feedTab === "siguiendo") {
+        params.set("feed", "siguiendo");
+        if (userEmail) params.set("viewerEmail", userEmail);
+      }
+      const qs = params.toString();
+      const res = await fetch(`/api/posts${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       setPosts(data.posts || []);
+      if (typeof data.followingCount === "number") {
+        setFollowingCount(data.followingCount);
+      }
     } catch (error) {
       console.error("Error cargando posts:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [feedTab, userEmail]);
 
   useEffect(() => {
+    setLoading(true);
     cargarPosts();
   }, [cargarPosts]);
 
-  // Mocked locally until issue #12's follow API lands — see lib/mockFollow.ts.
-  useEffect(() => {
-    if (userEmail) setFollowingIds(getFollowingIds(userEmail));
-  }, [userEmail, feedTab]);
-
-  const postsVisibles = useMemo(() => {
-    if (feedTab === "todos") return posts;
-    return posts.filter((p) => followingIds.includes(p.user.id));
-  }, [posts, feedTab, followingIds]);
+  const postsVisibles = posts;
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -139,12 +143,12 @@ export default function ComunidadPage() {
             <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-[#D7CCC8]">
               <span className="text-4xl mb-4">🫶</span>
               <p className="text-sm font-semibold text-[#3E2723]">
-                {followingIds.length === 0
+                {followingCount === 0
                   ? "Aun no sigues a nadie"
                   : "Las personas que sigues no han publicado todavia"}
               </p>
               <p className="text-xs text-[#A1887F] mt-1">
-                {followingIds.length === 0
+                {followingCount === 0
                   ? "Sigue a otras usuarias para ver sus publicaciones aqui"
                   : "Vuelve mas tarde para ver sus novedades"}
               </p>

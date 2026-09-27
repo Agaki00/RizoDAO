@@ -190,3 +190,31 @@ fn test_get_credentials_empty_for_unknown_address() {
     let creds = client.get_credentials(&unknown);
     assert_eq!(creds.len(), 0);
 }
+
+// ─── Test 11: initialize cannot be front-run by an arbitrary caller ──────────
+
+#[test]
+fn test_initialize_requires_admin_auth() {
+    let env = Env::default();
+    // Deliberately NOT mocking auths: an arbitrary caller must not be able to
+    // initialise the contract on `admin`'s behalf and seize admin rights.
+    let contract_id = env.register_contract(None, RizoSbt);
+    let client = RizoSbtClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    assert!(client.try_initialize(&admin).is_err());
+}
+
+// ─── Test 12: a correctly authorised admin can still initialise ──────────────
+
+#[test]
+fn test_initialize_succeeds_with_admin_auth() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, RizoSbt);
+    let client = RizoSbtClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    // `initialize` returns unit, so a successful call simply yields Ok(()).
+    assert!(client.try_initialize(&admin).is_ok());
+}
