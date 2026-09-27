@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Leaf, Palette, Sparkles, Wind, BadgeCheck, Send } from "lucide-react";
+import { Leaf, Palette, Sparkles, Wind, BadgeCheck, Send, Wallet } from "lucide-react";
 import CredentialCard from "@/components/profesionales/CredentialCard";
 import { CREDENTIAL_TYPES, type CredentialType } from "@/lib/sbtContract";
 
@@ -103,12 +103,18 @@ export default function CredentialsTab({ walletAddress }: CredentialsTabProps) {
   return (
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
-        <h2
-          className="text-lg font-bold text-[#3E2723]"
-          style={{ fontFamily: "var(--font-playfair)" }}
-        >
-          Credenciales verificadas
-        </h2>
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E1F5EE] px-2.5 py-1 text-xs font-medium text-[#0F6E56] mb-2">
+            <Wallet className="w-3.5 h-3.5" />
+            SBT / Web3
+          </span>
+          <h2
+            className="text-lg font-bold text-[#3E2723]"
+            style={{ fontFamily: "var(--font-playfair)" }}
+          >
+            Credenciales verificadas
+          </h2>
+        </div>
         <button
           onClick={() => setShowRequestPanel((prev) => !prev)}
           disabled={!canRequest}
@@ -166,7 +172,9 @@ export default function CredentialsTab({ walletAddress }: CredentialsTabProps) {
             Aun no tienes credenciales verificadas
           </p>
           <p className="text-sm text-[#A1887F] mt-1">
-            Solicita tu primera certificacion y destaca tu especializacion para toda la comunidad.
+            {walletAddress
+              ? "Solicita tu primera certificacion y destaca tu especializacion para toda la comunidad."
+              : "Conecta una wallet Stellar para consultar y solicitar credenciales SBT."}
           </p>
         </div>
       ) : (

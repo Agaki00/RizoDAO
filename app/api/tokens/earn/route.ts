@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getAuthUser } from "@/lib/getAuthUser";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { validateBody, earnSchema } from "@/lib/validations";
 
 const REGLAS_EARN: Record<string, number> = {
   post: 5,
@@ -11,22 +12,23 @@ const REGLAS_EARN: Record<string, number> = {
   navegacion: 3,
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Rate limit
+  const rlError = checkRateLimit(req);
+  if (rlError) return rlError;
+
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  // Validate body
+  const { data, error: valError } = await validateBody(req, earnSchema);
+  if (valError) return valError;
+
+  const { accion } = data!;
+
   try {
-    const { userEmail, accion } = await req.json() as {
-      userEmail: string;
-      accion: keyof typeof REGLAS_EARN;
-    };
-
-    if (!userEmail || !accion || !(accion in REGLAS_EARN)) {
-      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
-    }
-
-    const user = await prisma.user.findUnique({ where: { email: userEmail } });
-    if (!user) {
-      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
-    }
-
     const cantidad = REGLAS_EARN[accion];
 
     const [usuarioActualizado] = await prisma.$transaction([
