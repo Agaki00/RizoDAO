@@ -132,11 +132,10 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userEmail,
-          productName: producto.nombre,
-          precioUSDC: producto.precioUSDC,
-          tokensGanados: producto.tokens,
+          // The server derives price and reward rate from the Product row;
+          // client-submitted prices are ignored.
+          productId: producto.id,
           paymentAsset: "USDC",
-          precioXLM: 0,
           ...(codigoAplicado ? { discountCode: codigoAplicado.code } : {}),
         }),
       });

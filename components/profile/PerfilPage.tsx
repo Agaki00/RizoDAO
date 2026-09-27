@@ -360,9 +360,31 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {tab === "credenciales" && perfil?.role === "ESTILISTA" && (
-        <CredentialsTab walletAddress={perfil?.stellarPublicKey} />
-      )}
+      {/* Credenciales SBT: estados distinguibles (rol, wallet y on-chain) */}
+      {tab === "credenciales" &&
+        (perfil?.role !== "ESTILISTA" ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <span className="text-4xl mb-4">🎖️</span>
+            <p className="text-sm font-semibold text-[#3E2723]">
+              Las credenciales SBT son exclusivas de estilistas
+            </p>
+            <p className="text-xs text-[#A1887F] mt-1">
+              Cambia el rol de tu cuenta a ESTILISTA para obtener credenciales verificadas on-chain
+            </p>
+          </div>
+        ) : perfil?.stellarPublicKey ? (
+          <CredentialsTab walletAddress={perfil.stellarPublicKey} />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <span className="text-4xl mb-4">🔗</span>
+            <p className="text-sm font-semibold text-[#3E2723]">
+              Conecta tu wallet Stellar
+            </p>
+            <p className="text-xs text-[#A1887F] mt-1">
+              Necesitas una wallet Stellar vinculada a tu perfil para consultar o emitir credenciales SBT
+            </p>
+          </div>
+        ))}
 
       {/* Modal Editar Perfil */}
       {isEditing && (

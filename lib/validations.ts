@@ -49,23 +49,13 @@ export const paginationSchema = z.object({
 
 // ── Payments / Purchases ─────────────────────────────────────────────
 
+// Only the product id is accepted from the client. Price and reward rate are
+// looked up from Prisma by `productId` in the route, never trusted from the body.
 export const pagoSchema = z.object({
   userEmail: z.string().email("Email inválido"),
-  productName: z.string().min(1, "Nombre del producto requerido"),
-  precioUSDC: z.number().min(0, "Precio debe ser positivo"),
-  tokensGanados: z.number().int().min(0),
+  productId: z.string().min(1, "Producto requerido"),
   paymentAsset: z.enum(["USDC", "XLM"]).default("USDC"),
-  precioXLM: z.number().min(0).optional(),
   discountCode: z.string().optional(),
-});
-
-export const compraSchema = z.object({
-  walletAddress: z.string().min(1, "Wallet requerido"),
-  userEmail: z.string().email("Email inválido").optional(),
-  productName: z.string().min(1, "Nombre del producto requerido"),
-  precioUSDC: z.number().min(0),
-  tokensGanados: z.number().int().min(0),
-  stellarTxHash: z.string().min(1, "Hash de transacción requerido"),
 });
 
 // ── Tokens ───────────────────────────────────────────────────────────
