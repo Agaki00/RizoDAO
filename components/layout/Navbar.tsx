@@ -4,10 +4,13 @@ import { useState } from "react";
 import { useAccesly } from "accesly";
 import AuthModal from "@/components/layout/AuthModal";
 import { useSession, signOut } from "next-auth/react";
+import { ShoppingCart } from "lucide-react";
+import { useCartStore, type CartItem } from "@/store/cartStore";
 
 const linksBase = [
-  { label: "Comunidad",    href: "/comunidad" },
-  { label: "Tienda",       href: "/tienda" },
+  { label: "Comunidad", href: "/comunidad" },
+  { label: "Tienda", href: "/tienda" },
+  { label: "Diagnóstico", href: "/diagnostico" },
   { label: "Profesionales", href: "/estilistas" },
 ];
 
@@ -24,9 +27,15 @@ export default function Navbar() {
   const { data: session } = useSession();
 
   const estaLogueado = !!wallet || !!session?.user;
+  const userRole = (session?.user as { role?: string } | undefined)?.role;
+  const esProfesional = userRole === "ESTILISTA" || userRole === "PROFESIONAL";
   const userInicial = wallet?.email?.[0]?.toUpperCase()
     || session?.user?.name?.[0]?.toUpperCase()
     || "U";
+  const cartCount = useCartStore(
+    (state) =>
+      (state as typeof state & { items?: CartItem[] }).items?.length ?? 0
+  );
 
   const handleDesconectar = () => {
     setDropdownOpen(false);
@@ -62,10 +71,24 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+            {esProfesional && (
+              <Link href="/agenda" className="text-sm text-[#4E342E] hover:text-[#8D6E63] transition-colors">
+                Mi agenda
+              </Link>
+            )}
           </div>
 
           {/* Derecha */}
           <div className="hidden md:flex items-center gap-3">
+            {/* Cart icon */}
+            <Link href="/carrito" className="relative w-8 h-8 flex items-center justify-center text-[#4E342E] hover:text-[#8D6E63] transition-colors">
+              <ShoppingCart className="w-5 h-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#8D6E63] text-white text-[9px] font-bold flex items-center justify-center">
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </Link>
             {estaLogueado ? (
               <div className="relative">
                 <button
@@ -125,6 +148,11 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+            {esProfesional && (
+              <Link href="/agenda" className="text-sm text-[#4E342E]" onClick={() => setMenuOpen(false)}>
+                Mi agenda
+              </Link>
+            )}
             {estaLogueado ? (
               <button onClick={handleDesconectar}
                 className="text-sm text-[#8D6E63] text-left">
@@ -136,6 +164,11 @@ export default function Navbar() {
                 Entrar
               </button>
             )}
+            <Link href="/carrito" onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 text-sm text-[#4E342E]">
+              <ShoppingCart className="w-4 h-4" />
+              Carrito {cartCount > 0 && <span className="bg-[#8D6E63] text-white text-xs px-1.5 py-0.5 rounded-full">{cartCount}</span>}
+            </Link>
           </div>
         )}
       </nav>
