@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
   validateBody,
@@ -10,22 +11,61 @@ import {
 
 const prisma = new PrismaClient();
 
+/**
+ * Feed query. `feed=siguiendo` returns only posts authored by users the viewer
+ * follows, resolved from the persisted Follow table (lib/mockFollow.ts is gone).
+ */
+const postsQuerySchema = paginationSchema.extend({
+  feed: z.enum(["todos", "siguiendo"]).default("todos"),
+  viewerEmail: z.string().email("Email inválido").optional(),
+});
+
 export async function GET(req: NextRequest) {
   // Rate limit
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
-  // Validate pagination params
+  // Validate pagination + feed params
   const { data: params, error: valError } = validateSearchParams(
     req,
-    paginationSchema
+    postsQuerySchema
   );
   if (valError) return valError;
 
-  const { cursor, limit } = params!;
+  const { cursor, limit, feed, viewerEmail } = params!;
 
   try {
-    const query: Parameters<typeof prisma.post.findMany>[0] = {
+    let where: Prisma.PostWhereInput | undefined;
+    let followingCount: number | null = null;
+
+    if (feed === "siguiendo") {
+      const viewer = viewerEmail
+        ? await prisma.user.findUnique({
+            where: { email: viewerEmail },
+            select: { id: true },
+          })
+        : null;
+
+      if (!viewer) {
+        // Not signed in (or unknown viewer): the "Siguiendo" feed is empty.
+        return NextResponse.json({
+          posts: [],
+          nextCursor: null,
+          hasMore: false,
+          feed,
+          followingCount: 0,
+        });
+      }
+
+      // Posts whose author is followed by the viewer — one SQL join, no
+      // client-side filtering and no localStorage.
+      where = { user: { followers: { some: { followerId: viewer.id } } } };
+      followingCount = await prisma.follow.count({
+        where: { followerId: viewer.id },
+      });
+    }
+
+    const query: Prisma.PostFindManyArgs = {
       orderBy: { createdAt: "desc" },
       take: limit + 1, // fetch one extra to detect next page
       include: {
@@ -40,12 +80,9 @@ export async function GET(req: NextRequest) {
           },
         },
       },
+      ...(where ? { where } : {}),
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     };
-
-    if (cursor) {
-      query.cursor = { id: cursor };
-      query.skip = 1; // skip the cursor item itself
-    }
 
     const posts = await prisma.post.findMany(query);
 
@@ -57,6 +94,8 @@ export async function GET(req: NextRequest) {
       posts: result,
       nextCursor,
       hasMore,
+      feed,
+      followingCount,
     });
   } catch (error) {
     console.error("Error obteniendo posts:", error);
