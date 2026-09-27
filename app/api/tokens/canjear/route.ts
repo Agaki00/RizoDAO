@@ -1,35 +1,54 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getAuthUser } from "@/lib/getAuthUser";
 import { generateDiscountCode } from "@/lib/generateCode";
-
-const prisma = new PrismaClient();
+import { checkRateLimit } from "@/lib/rateLimit";
+import { validateBody, canjearSchema } from "@/lib/validations";
 
 const CANJE_CONFIG: Record<
   string,
   { discount: number; tokens: number; description: string }
 > = {
-  DESCUENTO_5:  { discount: 5,  tokens: 100, description: "Descuento 5% en cualquier producto" },
-  DESCUENTO_10: { discount: 10, tokens: 200, description: "Descuento 10% en productos seleccionados" },
-  DESCUENTO_20: { discount: 20, tokens: 400, description: "Descuento 20% en tu proxima cita" },
+  DESCUENTO_5: {
+    discount: 5,
+    tokens: 100,
+    description: "Descuento 5% en cualquier producto",
+  },
+  DESCUENTO_10: {
+    discount: 10,
+    tokens: 200,
+    description: "Descuento 10% en productos seleccionados",
+  },
+  DESCUENTO_20: {
+    discount: 20,
+    tokens: 400,
+    description: "Descuento 20% en tu proxima cita",
+  },
 };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Rate limit
+  const rlError = checkRateLimit(req);
+  if (rlError) return rlError;
+
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  // Validate body
+  const { data, error: valError } = await validateBody(req, canjearSchema);
+  if (valError) return valError;
+
+  const { canjeType } = data!;
+  const config = CANJE_CONFIG[canjeType];
+
   try {
-    const { userEmail, canjeType } = await req.json();
-
-    if (!userEmail || !canjeType || !(canjeType in CANJE_CONFIG)) {
-      return NextResponse.json({ error: "Datos invalidos" }, { status: 400 });
-    }
-
-    const config = CANJE_CONFIG[canjeType];
-
-    const user = await prisma.user.findUnique({ where: { email: userEmail } });
-    if (!user) {
-      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
-    }
-
     if (user.tokens < config.tokens) {
-      return NextResponse.json({ error: "Tokens insuficientes" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Tokens insuficientes" },
+        { status: 400 }
+      );
     }
 
     // Verificar si ya tiene un código activo del mismo tipo
