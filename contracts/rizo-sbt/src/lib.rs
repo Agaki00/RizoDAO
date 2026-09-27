@@ -78,7 +78,13 @@ impl RizoSbt {
 
     /// Initialise the contract with an admin address.
     /// Must be called exactly once after deployment.
+    ///
+    /// The `admin` address must authorise the call, so an arbitrary account
+    /// cannot front-run the deployment and claim admin rights: only the holder
+    /// of the configured issuer key can initialise the contract.
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
         // Prevent re-initialisation
         if env.storage().persistent().has(&DataKey::Admin) {
             panic_with_error!(&env, SbtError::Unauthorized);

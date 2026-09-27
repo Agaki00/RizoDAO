@@ -157,7 +157,7 @@ async function recordCompletedPurchase(params: {
  * and retry the credit. Safe to call repeatedly: a successful credit makes the
  * order COMPLETED, and a duplicate hash is treated as already reconciled.
  */
-export async function reconcilePurchase(
+async function reconcilePurchase(
   purchaseId: string,
   txHashOverride?: string
 ): Promise<boolean> {
