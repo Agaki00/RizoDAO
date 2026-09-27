@@ -30,8 +30,10 @@ model User {
 
   posts         Post[]
   tokenTxs      TokenTransaction[]
-  appointments  Appointment[]
-  reviews       Review[]
+  appointments  Appointment[] @relation("ClientAppointments")
+  stylistAppointments Appointment[] @relation("StylistAppointments")
+  reviews       Review[]      @relation("ReviewAuthor")
+  stylistReviews Review[]       @relation("StylistReviews")
   purchases     Purchase[]
   discountCodes DiscountCode[]
   following     Follow[] @relation("FollowFollower")
@@ -108,12 +110,15 @@ model Review {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stylistId String?
+  stylist   User?    @relation("StylistReviews", fields: [stylistId], references: [id], onDelete: Cascade)
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation("ReviewAuthor", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+  @@index([stylistId])
   @@index([userId])
 }
 
@@ -148,10 +153,12 @@ model DiscountCode {
 model Appointment {
   id           String   @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation("ClientAppointments", fields: [userId], references: [id], onDelete: Cascade)
   stylistName  String
   stylistId    String?
+  stylist      User?    @relation("StylistAppointments", fields: [stylistId], references: [id], onDelete: SetNull)
   date         DateTime
+  notes        String?
   tokensUsed   Int      @default(0)
   usdcAmount   Float    @default(0)
   status       String   @default("pending")
@@ -159,6 +166,7 @@ model Appointment {
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([stylistId, date])
 }
 
 model Follow {

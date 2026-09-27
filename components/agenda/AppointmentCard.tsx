@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Check, Clock3, MessageCircle, UserRound } from "lucide-react";
+import { CalendarDays, Check, Clock3, MessageCircle, UserRound, X } from "lucide-react";
 
 export type AppointmentStatus = "pending" | "confirmed" | "cancelled";
 
@@ -24,9 +24,11 @@ const statusStyles: Record<AppointmentStatus, { label: string; badge: string }> 
 type AppointmentCardProps = {
   appointment: AgendaAppointment;
   onConfirm?: (id: string) => void;
+  onCancel?: (id: string) => void;
+  busy?: boolean;
 };
 
-export default function AppointmentCard({ appointment, onConfirm }: AppointmentCardProps) {
+export default function AppointmentCard({ appointment, onConfirm, onCancel, busy }: AppointmentCardProps) {
   const status = statusStyles[appointment.status];
 
   return (
@@ -46,10 +48,19 @@ export default function AppointmentCard({ appointment, onConfirm }: AppointmentC
             <span className="flex items-center gap-1.5"><Clock3 className="w-4 h-4 text-[#8D6E63]" />{appointment.time}</span>
           </div>
           {appointment.notes && <p className="mt-3 flex gap-1.5 text-xs text-[#6D4C41]"><MessageCircle className="w-4 h-4 shrink-0 text-[#A1887F]" />{appointment.notes}</p>}
-          {appointment.status === "pending" && onConfirm && (
-            <button onClick={() => onConfirm(appointment.id)} className="mt-4 inline-flex items-center gap-1.5 bg-[#0F6E56] text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-[#0B5A46] transition-colors">
-              <Check className="w-4 h-4" />Confirmar cita
-            </button>
+          {appointment.status !== "cancelled" && (onConfirm || onCancel) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {appointment.status === "pending" && onConfirm && (
+                <button disabled={busy} onClick={() => onConfirm(appointment.id)} className="inline-flex items-center gap-1.5 bg-[#0F6E56] text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-[#0B5A46] transition-colors disabled:opacity-60">
+                  <Check className="w-4 h-4" />Confirmar cita
+                </button>
+              )}
+              {onCancel && (
+                <button disabled={busy} onClick={() => onCancel(appointment.id)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-[#6D4C41] border border-[#D7CCC8] hover:bg-[#EFEBE9] transition-colors disabled:opacity-60">
+                  <X className="w-4 h-4" />Cancelar
+                </button>
+              )}
+            </div>
           )}
           {appointment.status === "cancelled" && <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#6D6D6D]"><UserRound className="w-4 h-4" />Esta cita ya no está activa.</p>}
         </div>

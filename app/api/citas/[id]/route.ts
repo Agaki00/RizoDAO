@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 function getUserId(session: Awaited<ReturnType<typeof getServerSession<typeof authOptions>>>): string {
   return String(session?.user?.id ?? "");
@@ -76,6 +74,21 @@ export async function PATCH(
 
     if (cita.userId !== userId && cita.stylistId !== userId) {
       return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+    }
+
+    // Only the stylist can confirm, either side can cancel
+    if (status === "confirmed" && cita.stylistId !== userId) {
+      return NextResponse.json(
+        { error: "Solo la estilista puede confirmar la cita" },
+        { status: 403 }
+      );
+    }
+
+    if (cita.status === "cancelled") {
+      return NextResponse.json(
+        { error: "La cita ya fue cancelada" },
+        { status: 409 }
+      );
     }
 
     const updated = await prisma.appointment.update({

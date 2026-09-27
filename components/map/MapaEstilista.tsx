@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import BookingForm from "@/components/agenda/BookingForm";
 
 interface Stylist {
   id: string;
   nombre: string;
   handle: string;
   especialidad: string;
-  calificacion: number;
+  calificacion: number | null;
   resenas: number;
   lat: number | null;
   lng: number | null;
@@ -27,6 +28,7 @@ export default function MapaEstilistas() {
   const [cargando, setCargando] = useState(true);
   const [userLocation, setUserLocation] = useState<[number, number]>([19.4326, -99.1332]); // CDMX fallback
   const [leafletLib, setLeafletLib] = useState<any>(null);
+  const [estilistaParaCita, setEstilistaParaCita] = useState<Stylist | null>(null);
 
   // Fetch stylists from API
   useEffect(() => {
@@ -34,15 +36,15 @@ export default function MapaEstilistas() {
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          const mapped = data.map((u: any, idx: number) => ({
+          const mapped = data.map((u: any) => ({
             id: u.id,
             nombre: u.name || u.email.split("@")[0],
             handle: `@${u.email.split("@")[0]}`,
             especialidad: u.hairType 
               ? `Especialista en rizos ${u.hairType.toUpperCase()}` 
               : (u.bio || "Estilista Profesional"),
-            calificacion: 4 + (idx % 2 === 0 ? 0.9 : 0.8), // pseudo-random rating
-            resenas: 10 + (idx * 7) % 150, // pseudo-random reviews
+            calificacion: typeof u.rating === "number" ? u.rating : null,
+            resenas: u.reviewCount ?? 0,
             lat: u.latitude,
             lng: u.longitude,
             disponible: u.latitude !== null && u.longitude !== null,
@@ -90,8 +92,8 @@ export default function MapaEstilistas() {
     });
   }, []);
 
-  const handleAgendar = (nombre: string) => {
-    alert(`¡Reserva iniciada! Tu cita con ${nombre} se está procesando.`);
+  const handleAgendar = (estilista: Stylist) => {
+    setEstilistaParaCita(estilista);
   };
 
   return (
@@ -143,11 +145,19 @@ export default function MapaEstilistas() {
                     <p className="text-xs text-[#A1887F]">{e.handle}</p>
                     <p className="text-xs text-[#6D4C41] mt-1">{e.especialidad}</p>
                     <div className="flex items-center gap-1 mt-1">
-                      {[1,2,3,4,5].map((star) => (
-                        <span key={star} className="text-xs"
-                          style={{ color: star <= e.calificacion ? "#C89B4F" : "#D7CCC8" }}>★</span>
-                      ))}
-                      <span className="text-xs text-[#A1887F] ml-1">({e.resenas})</span>
+                      {e.calificacion !== null ? (
+                        <>
+                          {[1,2,3,4,5].map((star) => (
+                            <span key={star} className="text-xs"
+                              style={{ color: star <= Math.round(e.calificacion ?? 0) ? "#C89B4F" : "#D7CCC8" }}>★</span>
+                          ))}
+                          <span className="text-xs text-[#A1887F] ml-1">
+                            {e.calificacion.toFixed(1)} ({e.resenas})
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-[#A1887F]">Sin reseñas aún</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -155,7 +165,7 @@ export default function MapaEstilistas() {
                   <button 
                     onClick={(evt) => {
                       evt.stopPropagation();
-                      handleAgendar(e.nombre);
+                      handleAgendar(e);
                     }}
                     className="mt-3 w-full bg-[#8D6E63] text-white py-2 rounded-xl text-xs font-medium hover:bg-[#6D4C41] transition-colors"
                   >
@@ -169,7 +179,7 @@ export default function MapaEstilistas() {
 
         {/* Mapa */}
         <div className="lg:col-span-2 relative h-96 lg:h-auto min-h-[400px]">
-          <div className="absolute inset-0 rounded-2xl overflow-hidden border border-[#D7CCC8] bg-[#D7CCC8]">
+          <div className="absolute inset-0 isolate rounded-2xl overflow-hidden border border-[#D7CCC8] bg-[#D7CCC8]">
             {leafletLib ? (
               <leafletLib.MapContainer
                 center={userLocation}
@@ -194,7 +204,7 @@ export default function MapaEstilistas() {
                           <p style={{ fontWeight: 700, marginBottom: 2, color: "#3E2723" }}>{e.nombre}</p>
                           <p style={{ fontSize: 11, color: "#A1887F", margin: "0 0 4px 0" }}>{e.especialidad}</p>
                           <button
-                            onClick={() => handleAgendar(e.nombre)}
+                            onClick={() => handleAgendar(e)}
                             className="mt-2 w-full bg-[#8D6E63] text-white py-1.5 rounded-lg text-xs font-medium hover:bg-[#6D4C41] transition-colors"
                             style={{ border: "none", cursor: "pointer" }}
                           >
@@ -214,6 +224,13 @@ export default function MapaEstilistas() {
         </div>
 
       </div>
+
+      {estilistaParaCita && (
+        <BookingForm
+          stylist={estilistaParaCita}
+          onClose={() => setEstilistaParaCita(null)}
+        />
+      )}
     </div>
   );
 }

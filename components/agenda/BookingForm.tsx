@@ -16,10 +16,10 @@ type BookingFormProps = {
     id: string;
     nombre: string;
     especialidad: string;
-    precio: string;
+    precio?: string;
   };
   onClose: () => void;
-  onBooked: (booking: BookingDetails) => void;
+  onBooked?: (booking: BookingDetails) => void;
 };
 
 function localDateValue(date = new Date()) {
@@ -34,8 +34,9 @@ export default function BookingForm({ stylist, onClose, onBooked }: BookingFormP
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [booked, setBooked] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const selectedDate = new Date(`${date}T${time}`);
 
@@ -45,14 +46,43 @@ export default function BookingForm({ stylist, onClose, onBooked }: BookingFormP
     }
 
     setError("");
-    onBooked({
-      stylistId: stylist.id,
-      stylistName: stylist.nombre,
-      date,
-      time,
-      notes: notes.trim(),
-    });
-    setBooked(true);
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/citas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stylistId: stylist.id,
+          // ISO string keeps the client timezone, time is sent as the slot label
+          date: selectedDate.toISOString(),
+          time,
+          notes: notes.trim() || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(
+          response.status === 401
+            ? "Inicia sesión para agendar una cita."
+            : data?.error ?? "No pudimos agendar la cita. Intenta de nuevo."
+        );
+        return;
+      }
+
+      onBooked?.({
+        stylistId: stylist.id,
+        stylistName: stylist.nombre,
+        date,
+        time,
+        notes: notes.trim(),
+      });
+      setBooked(true);
+    } catch {
+      setError("No pudimos conectar con el servidor. Intenta de nuevo.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -65,7 +95,7 @@ export default function BookingForm({ stylist, onClose, onBooked }: BookingFormP
             <h2 id="booking-title" className="text-xl font-bold text-[#3E2723]" style={{ fontFamily: "var(--font-playfair)" }}>
               Agenda con {stylist.nombre}
             </h2>
-            <p className="text-xs text-[#A1887F] mt-1">{stylist.especialidad} · ${stylist.precio} MXN</p>
+            <p className="text-xs text-[#A1887F] mt-1">{stylist.especialidad}{stylist.precio ? ` · $${stylist.precio} MXN` : ""}</p>
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="p-2 -mr-2 text-[#6D4C41] hover:bg-[#EFEBE9] rounded-full">
             <X className="w-5 h-5" />
@@ -100,7 +130,7 @@ export default function BookingForm({ stylist, onClose, onBooked }: BookingFormP
             {error && <p role="alert" className="text-sm text-[#B42318] bg-[#FEE4E2] rounded-xl px-3 py-2.5">{error}</p>}
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full text-sm font-medium text-[#6D4C41] hover:bg-[#EFEBE9]">Cancelar</button>
-              <button type="submit" className="bg-[#8D6E63] text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-[#6D4C41] transition-colors">Solicitar cita</button>
+              <button type="submit" disabled={submitting} className="bg-[#8D6E63] text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-[#6D4C41] transition-colors disabled:opacity-60">{submitting ? "Enviando..." : "Solicitar cita"}</button>
             </div>
           </form>
         )}
