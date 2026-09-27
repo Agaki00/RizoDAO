@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ShoppingCart, Check, ArrowLeft } from "lucide-react";
 import { useCart } from "@/store/cartStore";
@@ -41,10 +42,10 @@ function StepBadge({ num, label }: { num: number; label: string }) {
   );
 }
 
-export default function QuizResultadoPage() {
+function QuizResultadoContent() {
   const params = useSearchParams();
   const router = useRouter();
-  const { addItems, count } = useCart();
+  const { addItems, count } = useCart() as any;
 
   const tipo = params.get("tipo") ?? "";
   const [products, setProducts] = useState<Product[]>([]);
@@ -63,17 +64,20 @@ export default function QuizResultadoPage() {
 
   const handleAddRoutine = () => {
     if (products.length === 0) return;
-    addItems(
-      products.map((p) => ({
-        id: p.id,
-        nombre: p.name,
-        marca: p.brandName,
-        precioMXN: Math.round(p.price * MXN_PER_USDC),
-        precioUSDC: p.price,
-        imagen: p.imageUrl ?? "",
-        tokens: p.tokenPrice,
-      }))
-    );
+    if (typeof addItems === "function") {
+      addItems(
+        products.map((p) => ({
+          id: p.id,
+          nombre: p.name,
+          marca: p.brandName,
+          precioMXN: Math.round(p.price * MXN_PER_USDC),
+          precioUSDC: p.price,
+          imagen: p.imageUrl ?? "",
+          tokens: p.tokenPrice,
+          quantity: 1,
+        }))
+      );
+    }
     setAdded(true);
     setTimeout(() => setAdded(false), 2500);
   };
@@ -88,7 +92,7 @@ export default function QuizResultadoPage() {
 
         {/* Back */}
         <button
-          onClick={() => router.push("/quiz")}
+          onClick={() => router.push("/diagnostico")}
           className="flex items-center gap-2 text-sm text-[#A1887F] hover:text-[#6D4C41] mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -240,5 +244,19 @@ export default function QuizResultadoPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function QuizResultadoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center text-[#4E342E]">
+          Cargando recomendaciones...
+        </div>
+      }
+    >
+      <QuizResultadoContent />
+    </Suspense>
   );
 }

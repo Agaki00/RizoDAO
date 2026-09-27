@@ -1,5 +1,5 @@
 "use client";
-import { useCart } from "@/store/cartStore";
+import { CartItem, useCart } from "@/store/cartStore";
 import { useRouter } from "next/navigation";
 import { Trash2, ShoppingBag, ArrowLeft } from "lucide-react";
 
@@ -7,7 +7,10 @@ export default function CarritoPage() {
   const { items, removeItem, clear, total, count } = useCart();
   const router = useRouter();
 
-  const totalTokens = items.reduce((s, i) => s + i.tokens * i.quantity, 0);
+  const totalTokens = items.reduce(
+    (s: number, i: CartItem) => s + ((i.tokens ?? 0) * (i.quantity ?? 1)),
+    0
+  );
 
   if (count === 0) {
     return (
@@ -87,9 +90,9 @@ export default function CarritoPage() {
                 <div className="flex items-center justify-between mt-2">
                   <div>
                     <span className="text-sm font-bold text-[#8D6E63]">
-                      ${(item.precioMXN * item.quantity).toLocaleString("es-MX")} MXN
+                      ${((item.precioMXN ?? 0) * (item.quantity ?? 1)).toLocaleString("es-MX")} MXN
                     </span>
-                    {item.quantity > 1 && (
+                    {(item.quantity ?? 1) > 1 && (
                       <span className="text-xs text-[#A1887F] ml-1">×{item.quantity}</span>
                     )}
                   </div>

@@ -60,3 +60,5 @@ export function Providers({ children }: { children: React.ReactNode }) {
     </AcceslyProviderAny>
   );
 }
+
+export default Providers;
