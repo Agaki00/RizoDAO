@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { validateSearchParams, userMeSchema } from "@/lib/validations";
 
 export async function GET(req: NextRequest) {
-  try {
-    const email = req.nextUrl.searchParams.get("email");
-    const id = req.nextUrl.searchParams.get("id");
-    if (!email && !id) {
-      return NextResponse.json({ error: "Email o id requerido" }, { status: 400 });
-    }
+  const rlError = checkRateLimit(req);
+  if (rlError) return rlError;
 
+  const { data: params, error: valError } = validateSearchParams(
+    req,
+    userMeSchema
+  );
+  if (valError) return valError;
+
+  try {
     const user = await prisma.user.findUnique({
-      where: id ? { id } : { email: email as string },
+  where: params!.id ? { id: params!.id } : { email: params!.email! },
       select: {
         id: true,
         email: true,
@@ -26,13 +29,21 @@ export async function GET(req: NextRequest) {
         onboardingCompleted: true,
         createdAt: true,
         _count: {
-          select: { posts: true, reviews: true },
+          select: {
+            posts: true,
+            reviews: true,
+            following: true,
+            followers: true,
+          },
         },
       },
     });
 
     if (!user) {
-      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Usuario no encontrado" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(user);
