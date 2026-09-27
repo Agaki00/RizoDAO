@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { migrateGuestProfile } from "@/lib/guestCurlProfile";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +27,9 @@ export default function LoginPage() {
         setError("Correo o contrasena incorrectos");
         return;
       }
+
+      // Migrate any quiz results the user completed as a guest
+      await migrateGuestProfile({ email });
 
       router.push("/comunidad");
     } catch {
@@ -73,7 +77,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-right">
-            <Link href="#" className="text-xs text-[#8D6E63] hover:underline">
+            <Link href="/olvide-password" className="text-xs text-[#8D6E63] hover:underline">
               Olvidaste tu contrasena?
             </Link>
           </div>
