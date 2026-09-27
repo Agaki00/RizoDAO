@@ -2,8 +2,11 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useAccesly } from "accesly";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import CredentialsTab from "@/components/profile/CredentialsTab";
+import FollowButton from "@/components/perfil/FollowButton";
+import { getFollowingCount, getFollowerCount, isFollowing } from "@/lib/mockFollow";
 
 type UserProfile = {
   id: string;
@@ -16,6 +19,8 @@ type UserProfile = {
   avatar: string | null;
   stellarPublicKey: string | null;
   onboardingCompleted: boolean;
+  latitude: number | null;
+  longitude: number | null;
   _count: { posts: number; reviews: number };
 };
 
@@ -31,10 +36,99 @@ export default function PerfilPage() {
   const [tab, setTab] = useState<
     "publicaciones" | "resenas" | "guardados" | "credenciales"
   >("publicaciones");
+  const searchParams = useSearchParams();
   const [perfil, setPerfil] = useState<UserProfile | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
+  // States for profile editing
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editLatitude, setEditLatitude] = useState("");
+  const [editLongitude, setEditLongitude] = useState("");
+  const [editCargandoUbicacion, setEditCargandoUbicacion] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  const startEditing = () => {
+    setEditName(perfil?.name || "");
+    setEditBio(perfil?.bio || "");
+    setEditLatitude(perfil?.latitude !== null && perfil?.latitude !== undefined ? String(perfil.latitude) : "");
+    setEditLongitude(perfil?.longitude !== null && perfil?.longitude !== undefined ? String(perfil.longitude) : "");
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const obtenerUbicacion = () => {
+    if (!navigator.geolocation) {
+      setEditError("La geolocalización no está soportada por tu navegador");
+      return;
+    }
+    setEditCargandoUbicacion(true);
+    setEditError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setEditLatitude(String(position.coords.latitude));
+        setEditLongitude(String(position.coords.longitude));
+        setEditCargandoUbicacion(false);
+      },
+      (error) => {
+        console.error(error);
+        setEditError("Error al obtener la ubicación. Introduce las coordenadas manualmente.");
+        setEditCargandoUbicacion(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleGuardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+    setEditError(null);
+
+    try {
+      const res = await fetch("/api/user/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: editName,
+          bio: editBio,
+          rol: perfil?.role,
+          latitude: editLatitude ? parseFloat(editLatitude) : null,
+          longitude: editLongitude ? parseFloat(editLongitude) : null
+        }),
+      });
+
+      if (res.ok) {
+        setPerfil(prev => prev ? {
+          ...prev,
+          name: editName,
+          bio: editBio,
+          latitude: editLatitude ? parseFloat(editLatitude) : null,
+          longitude: editLongitude ? parseFloat(editLongitude) : null
+        } : null);
+        setIsEditing(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setEditError(data.error || "Error al actualizar el perfil");
+      }
+    } catch (error) {
+      console.error("Error al guardar perfil:", error);
+      setEditError("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   const userEmail = session?.user?.email || wallet?.email;
+  // Viewing someone else's profile via /perfil?usuario=<id>. Falls back to
+  // the logged-in user's own profile when absent.
+  const viewedUserId = searchParams.get("usuario");
+  const isOwnProfile = !viewedUserId;
+
   const userInicial = perfil?.name?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase() || "?";
   const username = perfil?.email?.split("@")[0] || "";
   const roleInfo = ROLE_LABELS[perfil?.role ?? "RIZADA"] ?? ROLE_LABELS.RIZADA;
@@ -48,15 +142,35 @@ export default function PerfilPage() {
   ];
 
   useEffect(() => {
-    if (!userEmail) return;
-    fetch(`/api/user/me?email=${encodeURIComponent(userEmail)}`)
+    if (isOwnProfile && !userEmail) { setCargando(false); return; }
+
+    const query = isOwnProfile
+      ? `email=${encodeURIComponent(userEmail as string)}`
+      : `id=${encodeURIComponent(viewedUserId as string)}`;
+
+    fetch(`/api/user/me?${query}`)
       .then((r) => r.json())
-      .then((data) => { if (data.id) setPerfil(data); })
+      .then((data) => {
+        if (!data.id) return;
+        setPerfil(data);
+
+        // Follow state and counters are derived from the profile just
+        // loaded (mocked locally until #12's API lands — see lib/mockFollow.ts).
+        setFollowerCount(getFollowerCount(data.id));
+        setFollowingCount(
+          isOwnProfile && userEmail
+            ? getFollowingCount(userEmail)
+            : getFollowingCount(data.email),
+        );
+        if (!isOwnProfile && userEmail) {
+          setFollowing(isFollowing(userEmail, data.id));
+        }
+      })
       .catch(console.error)
       .finally(() => setCargando(false));
-  }, [userEmail]);
+  }, [isOwnProfile, userEmail, viewedUserId]);
 
-  if (!userEmail) {
+  if (isOwnProfile && !userEmail) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-20 text-center">
         <p className="text-[#A1887F] text-sm mb-4">Inicia sesion para ver tu perfil</p>
@@ -72,6 +186,14 @@ export default function PerfilPage() {
     return (
       <div className="max-w-4xl mx-auto px-6 py-20 text-center">
         <div className="w-8 h-8 border-2 border-[#8D6E63] border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  if (!isOwnProfile && !perfil) {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-20 text-center">
+        <p className="text-[#A1887F] text-sm">No se encontro este perfil</p>
       </div>
     );
   }
@@ -93,11 +215,29 @@ export default function PerfilPage() {
           </div>
         </div>
 
-        {/* Boton editar */}
+        {/* Boton editar / seguir */}
         <div className="absolute bottom-4 right-4">
-          <button className="bg-white border border-[#D7CCC8] text-[#4E342E] px-4 py-2 rounded-full text-xs font-medium hover:bg-[#FAF8F5] transition-colors">
-            Editar perfil
-          </button>
+          {isOwnProfile ? (
+            <button
+              onClick={startEditing}
+              className="bg-white border border-[#D7CCC8] text-[#4E342E] px-4 py-2 rounded-full text-xs font-medium hover:bg-[#FAF8F5] transition-colors"
+            >
+              Editar perfil
+            </button>
+          ) : (
+            userEmail &&
+            perfil && (
+              <FollowButton
+                viewerEmail={userEmail}
+                targetUserId={perfil.id}
+                initialFollowing={following}
+                onChange={(next) => {
+                  setFollowing(next);
+                  setFollowerCount((c) => (next ? c + 1 : Math.max(0, c - 1)));
+                }}
+              />
+            )
+          )}
         </div>
       </div>
 
@@ -124,29 +264,39 @@ export default function PerfilPage() {
                 Tipo {perfil.hairType.toUpperCase()}
               </span>
             )}
+            {perfil?.role === "ESTILISTA" && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#FAF8F5] text-[#6D4C41]">
+                📍 {perfil.latitude !== null && perfil.longitude !== null
+                  ? `${perfil.latitude.toFixed(4)}, ${perfil.longitude.toFixed(4)}`
+                  : "Sin ubicación"}
+              </span>
+            )}
           </div>
         </div>
 
         {/* Tokens */}
-        <div className="bg-white rounded-2xl border border-[#D7CCC8] px-6 py-4 flex flex-col items-center min-w-32">
-          <p className="text-xs text-[#A1887F] mb-1">Mis tokens</p>
-          <span className="text-3xl font-bold text-[#8D6E63]"
-            style={{ fontFamily: "var(--font-playfair)" }}>
-            {perfil?.tokens ?? 0}
-          </span>
-          <span className="text-xs text-[#A1887F]">RIZO tokens</span>
-          <Link href="/recompensas"
-            className="mt-2 text-xs text-[#8D6E63] hover:underline">
-            Ver recompensas
-          </Link>
-        </div>
+        {isOwnProfile && (
+          <div className="bg-white rounded-2xl border border-[#D7CCC8] px-6 py-4 flex flex-col items-center min-w-32">
+            <p className="text-xs text-[#A1887F] mb-1">Mis tokens</p>
+            <span className="text-3xl font-bold text-[#8D6E63]"
+              style={{ fontFamily: "var(--font-playfair)" }}>
+              {perfil?.tokens ?? 0}
+            </span>
+            <span className="text-xs text-[#A1887F]">RIZO tokens</span>
+            <Link href="/recompensas"
+              className="mt-2 text-xs text-[#8D6E63] hover:underline">
+              Ver recompensas
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 bg-white rounded-2xl border border-[#D7CCC8] p-5 mb-6">
+      <div className="grid grid-cols-4 gap-4 bg-white rounded-2xl border border-[#D7CCC8] p-5 mb-6">
         {[
           { label: "Publicaciones", valor: perfil?._count?.posts ?? 0 },
-          { label: "Seguidores", valor: 0 },
+          { label: "Seguidores", valor: followerCount },
+          { label: "Siguiendo", valor: followingCount },
           { label: "Resenas", valor: perfil?._count?.reviews ?? 0 },
         ].map((stat) => (
           <div key={stat.label} className="text-center">
@@ -206,6 +356,108 @@ export default function PerfilPage() {
 
       {tab === "credenciales" && perfil?.role === "ESTILISTA" && (
         <CredentialsTab walletAddress={perfil?.stellarPublicKey} />
+      )}
+
+      {/* Modal Editar Perfil */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-6 border border-[#D7CCC8] max-w-md w-full shadow-lg">
+            <h2 className="text-xl font-bold text-[#3E2723] mb-4" style={{ fontFamily: "var(--font-playfair)" }}>
+              Editar Perfil
+            </h2>
+            <form onSubmit={handleGuardar} className="flex flex-col gap-4">
+              {editError && (
+                <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-200">
+                  {editError}
+                </p>
+              )}
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-[#6D4C41]">Nombre</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-[#FAF8F5] border border-[#D7CCC8] rounded-xl px-3 py-2 text-sm text-[#3E2723] focus:outline-none focus:border-[#8D6E63] transition-colors"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-[#6D4C41]">Biografía</label>
+                <textarea
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value)}
+                  rows={3}
+                  className="w-full bg-[#FAF8F5] border border-[#D7CCC8] rounded-xl px-3 py-2 text-sm text-[#3E2723] focus:outline-none focus:border-[#8D6E63] resize-none transition-colors"
+                />
+              </div>
+
+              {perfil?.role === "ESTILISTA" && (
+                <div className="border-t border-[#EFEBE9] pt-4 mt-1 flex flex-col gap-3">
+                  <p className="text-xs font-bold text-[#3E2723]">Ubicación del Estilista</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-[#6D4C41]">Latitud</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 19.4326"
+                        value={editLatitude}
+                        onChange={(e) => setEditLatitude(e.target.value)}
+                        className="w-full bg-[#FAF8F5] border border-[#D7CCC8] rounded-xl px-3 py-2 text-sm text-[#3E2723] focus:outline-none focus:border-[#8D6E63] transition-colors"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-[#6D4C41]">Longitud</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. -99.1332"
+                        value={editLongitude}
+                        onChange={(e) => setEditLongitude(e.target.value)}
+                        className="w-full bg-[#FAF8F5] border border-[#D7CCC8] rounded-xl px-3 py-2 text-sm text-[#3E2723] focus:outline-none focus:border-[#8D6E63] transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={obtenerUbicacion}
+                    disabled={editCargandoUbicacion}
+                    className="w-full bg-[#FAF8F5] border border-[#D7CCC8] text-[#8D6E63] py-2 rounded-xl text-xs font-medium hover:bg-[#EFEBE9] transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {editCargandoUbicacion ? (
+                      <span className="w-3.5 h-3.5 border-2 border-[#8D6E63] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <span>📍</span>
+                    )}
+                    Usar mi ubicación actual
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end mt-4 border-t border-[#EFEBE9] pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  disabled={guardando}
+                  className="px-4 py-2 border border-[#D7CCC8] text-xs text-[#6D4C41] rounded-full hover:bg-[#FAF8F5] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando || !editName.trim()}
+                  className="px-5 py-2 bg-[#8D6E63] text-white text-xs font-medium rounded-full hover:bg-[#6D4C41] transition-colors disabled:opacity-50"
+                >
+                  {guardando ? "Guardando..." : "Guardar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>
