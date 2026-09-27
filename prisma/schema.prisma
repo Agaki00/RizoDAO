@@ -15,6 +15,7 @@ model User {
   role                Role     @default(RIZADA)
   tokens              Int      @default(0)
   hairType            String?
+  curlType            String?
   avatar              String?
   bio                 String?
   verified            Boolean  @default(false)
@@ -25,6 +26,7 @@ model User {
   longitude           Float?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+  passwordResetTokens PasswordResetToken[]
 
   posts         Post[]
   tokenTxs      TokenTransaction[]
@@ -32,6 +34,23 @@ model User {
   reviews       Review[]
   purchases     Purchase[]
   discountCodes DiscountCode[]
+  following     Follow[] @relation("FollowFollower")
+  followers     Follow[] @relation("FollowFollowing")
+
+  @@index([createdAt])
+  @@index([stellarPublicKey])
+
+}
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Purchase {
@@ -43,7 +62,10 @@ model Purchase {
   precioUSDC    Float
   tokensGanados Int
   stellarTxHash String
+  status        String   @default("completed")
   createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Post {
@@ -54,6 +76,9 @@ model Post {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   likes     Int      @default(0)
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
 }
 
 model Product {
@@ -75,13 +100,21 @@ model Product {
 
 model Review {
   id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  content   String?
+  curlType  String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  rating    Int
-  content   String?
-  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([userId])
 }
 
 model TokenTransaction {
@@ -93,6 +126,8 @@ model TokenTransaction {
   reason          String
   stellarTxHash   String?
   createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model DiscountCode {
@@ -122,6 +157,20 @@ model Appointment {
   status       String   @default("pending")
   stellarTxHash String?
   createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followingId])
 }
 
 enum Role {
