@@ -5,7 +5,7 @@ import { useAccesly } from "accesly";
 import AuthModal from "@/components/layout/AuthModal";
 import { useSession, signOut } from "next-auth/react";
 import { ShoppingCart } from "lucide-react";
-import { useCartStore } from "@/store/cartStore";
+import { useCartStore, type CartItem } from "@/store/cartStore";
 
 const linksBase = [
   { label: "Comunidad", href: "/comunidad" },
@@ -32,8 +32,10 @@ export default function Navbar() {
   const userInicial = wallet?.email?.[0]?.toUpperCase()
     || session?.user?.name?.[0]?.toUpperCase()
     || "U";
-const cartItems = useCartStore((state: any) => state.items ?? []);
-const cartCount = cartItems.length;
+  const cartCount = useCartStore(
+    (state) =>
+      (state as typeof state & { items?: CartItem[] }).items?.length ?? 0
+  );
 
   const handleDesconectar = () => {
     setDropdownOpen(false);

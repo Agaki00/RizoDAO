@@ -60,6 +60,7 @@ model Purchase {
   precioUSDC    Float
   tokensGanados Int
   stellarTxHash String
+  status        String   @default("completed")
   createdAt     DateTime @default(now())
 
   @@index([userId, createdAt])

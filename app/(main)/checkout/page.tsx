@@ -137,7 +137,7 @@ export default function CheckoutPage() {
           tokensGanados: producto.tokens,
           paymentAsset: "USDC",
           precioXLM: 0,
-          discountCode: codigoAplicado?.code ?? null,
+          ...(codigoAplicado ? { discountCode: codigoAplicado.code } : {}),
         }),
       });
 
