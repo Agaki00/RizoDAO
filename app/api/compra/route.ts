@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { sendPurchaseConfirmationEmail } from "@/lib/email";
+import { getAuthUser } from "@/lib/getAuthUser";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { validateBody, compraSchema } from "@/lib/validations";
 
@@ -65,13 +66,18 @@ export async function POST(req: NextRequest) {
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
+  // Identity must be verified on the server.
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   // Validate body
   const { data, error: valError } = await validateBody(req, compraSchema);
   if (valError) return valError;
 
   const {
     walletAddress,
-    userEmail,
     productName,
     precioUSDC,
     tokensGanados,
@@ -79,10 +85,22 @@ export async function POST(req: NextRequest) {
   } = data!;
 
   try {
+    if (!user.stellarPublicKey) {
+      return NextResponse.json(
+        { error: "La cuenta no tiene una wallet Stellar configurada" },
+        { status: 409 }
+      );
+    }
+
+    // The purchase must be paid from the authenticated account's own wallet.
+    if (walletAddress !== user.stellarPublicKey) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+
     // Verificar que la tx sea real en Stellar Testnet
     const txValida = await verificarTransaccion(
       stellarTxHash,
-      walletAddress,
+      user.stellarPublicKey,
       precioUSDC
     );
     if (!txValida) {
@@ -92,22 +110,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Buscar usuario por email o walletAddress
-    let user = null;
-    if (userEmail) {
-      user = await prisma.user.findUnique({ where: { email: userEmail } });
-    }
-    if (!user && walletAddress) {
-      user = await prisma.user.findFirst({
-        where: { stellarPublicKey: walletAddress },
-      });
-    }
-
-    // Registrar la compra
+    // Registrar la compra a nombre del usuario autenticado
     const compra = await prisma.purchase.create({
       data: {
-        userId: user?.id ?? null,
-        walletAddress,
+        userId: user.id,
+        walletAddress: user.stellarPublicKey,
         productName,
         precioUSDC,
         tokensGanados,
@@ -115,67 +122,61 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    let totalTokens = 0;
-    let comprasEsteMes = 0;
+    // Acreditar tokens en la BD
+    const usuarioActualizado = await prisma.user.update({
+      where: { id: user.id },
+      data: { tokens: { increment: tokensGanados } },
+    });
+
+    const totalTokens = usuarioActualizado.tokens;
+
+    // Registrar en historial de TokenTransaction
+    await prisma.tokenTransaction.create({
+      data: {
+        userId: user.id,
+        amount: tokensGanados,
+        type: "COMPRA",
+        reason: `Compra: ${productName}`,
+        stellarTxHash,
+      },
+    });
+
+    // Contar compras del mes actual (regla: mín. 2/mes para tokens activos)
+    const inicioMes = new Date();
+    inicioMes.setDate(1);
+    inicioMes.setHours(0, 0, 0, 0);
+
+    const comprasEsteMes = await prisma.purchase.count({
+      where: {
+        userId: user.id,
+        createdAt: { gte: inicioMes },
+      },
+    });
+
+    const tokensActivos = comprasEsteMes >= 2;
+
+    // Determinar descuento disponible
     let descuentoActivo: string | null = null;
-    let tokensActivos = false;
-
-    if (user) {
-      // Acreditar tokens en la BD
-      const usuarioActualizado = await prisma.user.update({
-        where: { id: user.id },
-        data: { tokens: { increment: tokensGanados } },
-      });
-
-      totalTokens = usuarioActualizado.tokens;
-
-      // Registrar en historial de TokenTransaction
-      await prisma.tokenTransaction.create({
-        data: {
-          userId: user.id,
-          amount: tokensGanados,
-          type: "COMPRA",
-          reason: `Compra: ${productName}`,
-          stellarTxHash,
-        },
-      });
-
-      // Contar compras del mes actual (regla: mín. 2/mes para tokens activos)
-      const inicioMes = new Date();
-      inicioMes.setDate(1);
-      inicioMes.setHours(0, 0, 0, 0);
-
-      comprasEsteMes = await prisma.purchase.count({
-        where: {
-          userId: user.id,
-          createdAt: { gte: inicioMes },
-        },
-      });
-
-      tokensActivos = comprasEsteMes >= 2;
-
-      // Determinar descuento disponible
-      for (const regla of REGLAS_DESCUENTO) {
-        if (totalTokens >= regla.tokens) {
-          descuentoActivo = regla.tipo;
-          break;
-        }
+    for (const regla of REGLAS_DESCUENTO) {
+      if (totalTokens >= regla.tokens) {
+        descuentoActivo = regla.tipo;
+        break;
       }
+    }
 
-      if (user.email) {
-        await sendPurchaseConfirmationEmail({
-          to: user.email,
-          name: user.name ?? "",
-          productName,
-          precioUSDC,
-          tokensGanados,
-          stellarTxHash,
-          purchaseId: compra.id,
-        }).catch((error: unknown) => {
-          // Un fallo del correo no debe impedir la respuesta de compra exitosa.
-          console.error("[/api/compra] Error al enviar correo de confirmación:", error);
-        });
-      }
+    if (user.email) {
+      await sendPurchaseConfirmationEmail({
+        to: user.email,
+        name: user.name ?? "",
+        productName,
+        precioUSDC,
+        tokensGanados,
+        stellarTxHash,
+        purchaseId: compra.id,
+      }).catch((error: unknown) => {
+        // Un fallo del correo no debe impedir la respuesta de compra exitosa.
+        console.error("[/api/compra] Error al enviar correo de confirmación:", error);
+      });
     }
 
     return NextResponse.json({

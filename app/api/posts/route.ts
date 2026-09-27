@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getAuthUser } from "@/lib/getAuthUser";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
   validateBody,
@@ -69,24 +70,19 @@ export async function POST(req: NextRequest) {
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
+  // Identity is resolved from the server session (or a verified wallet token).
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   // Validate body
   const { data, error: valError } = await validateBody(req, createPostSchema);
   if (valError) return valError;
 
-  const { contenido, userEmail } = data!;
+  const { contenido } = data!;
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Usuario no encontrado" },
-        { status: 404 }
-      );
-    }
-
     // Crear post
     const post = await prisma.post.create({
       data: {

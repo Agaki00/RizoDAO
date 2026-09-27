@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  CREDENTIAL_TYPES,
-  type CredentialType,
-  getCredentials,
-  requestCredential,
-} from "@/lib/sbtContract";
-
-function isCredentialType(value: unknown): value is CredentialType {
-  return typeof value === "string" && CREDENTIAL_TYPES.includes(value as CredentialType);
-}
+import { getCredentials, requestCredential } from "@/lib/sbtContract";
+import { getAuthUser } from "@/lib/getAuthUser";
+import { credentialRequestSchema, validateBody } from "@/lib/validations";
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,16 +19,25 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const wallet = body?.wallet as string | undefined;
-    const credentialType = body?.credentialType;
+  // Identity must come from a verified session/token, not from the body.
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
 
-    if (!wallet || !isCredentialType(credentialType)) {
-      return NextResponse.json(
-        { error: "wallet y credentialType son requeridos" },
-        { status: 400 }
-      );
+  // Validate body
+  const { data, error: valError } = await validateBody(
+    req,
+    credentialRequestSchema
+  );
+  if (valError) return valError;
+
+  const { wallet, credentialType } = data!;
+
+  try {
+    // A user may only request credentials for their own wallet.
+    if (!user.stellarPublicKey || wallet !== user.stellarPublicKey) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
     await requestCredential(wallet, credentialType);

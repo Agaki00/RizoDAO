@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// Stellar ed25519 public keys are 56-char base32 strings starting with `G`.
+const stellarAddressSchema = z
+  .string()
+  .regex(/^G[A-Z2-7]{55}$/, "Dirección Stellar inválida");
+
 // ── Auth / Registration ──────────────────────────────────────────────
 
 export const registroSchema = z.object({
@@ -27,7 +32,6 @@ export const walletSchema = z.object({
 
 export const createPostSchema = z.object({
   contenido: z.string().min(1, "Contenido es requerido").max(2000),
-  userEmail: z.string().email("Email inválido"),
 });
 
 // ── Products ─────────────────────────────────────────────────────────
@@ -61,7 +65,6 @@ export const pagoSchema = z.object({
 
 export const compraSchema = z.object({
   walletAddress: z.string().min(1, "Wallet requerido"),
-  userEmail: z.string().email("Email inválido").optional(),
   productName: z.string().min(1, "Nombre del producto requerido"),
   precioUSDC: z.number().min(0),
   tokensGanados: z.number().int().min(0),
@@ -122,6 +125,66 @@ export const userBalancesSchema = z.object({
 
 export const userRewardsSchema = z.object({
   email: z.string().email("Email inválido"),
+});
+
+// ── Reviews (multipart) ──────────────────────────────────────────────
+
+/** Fields submitted as multipart/form-data to /api/products/[id]/reviews. */
+export const productReviewFormSchema = z.object({
+  rating: z.coerce
+    .number()
+    .int("Calificación inválida")
+    .min(1, "Calificación mínima es 1")
+    .max(5, "Calificación máxima es 5"),
+  content: z.string().max(1000, "Máximo 1000 caracteres").optional(),
+  curlType: z.string().regex(/^[2-4][A-C]$/, "Tipo de rizo inválido"),
+});
+
+// ── Diagnóstico capilar ──────────────────────────────────────────────
+
+export const diagnosticoSchema = z
+  .object({
+    hairType: z.string().max(50).optional(),
+    curlPattern: z.string().max(50).optional(),
+    porosity: z.string().max(50).optional(),
+    thickness: z.string().max(50).optional(),
+    length: z.string().max(50).optional(),
+  })
+  .refine(
+    (params) =>
+      Boolean(
+        params.curlPattern ||
+          params.hairType ||
+          params.porosity ||
+          params.thickness ||
+          params.length
+      ),
+    { message: "Se requiere al menos un dato del perfil capilar" }
+  );
+
+// ── Credenciales (SBT) ───────────────────────────────────────────────
+
+export const credentialRequestSchema = z.object({
+  wallet: stellarAddressSchema,
+  credentialType: z.enum([
+    "curl_specialist",
+    "natural_hair",
+    "loc_stylist",
+    "color_specialist",
+  ]),
+});
+
+// ── Wallet auth (Accesly / Stellar) ──────────────────────────────────
+
+export const walletChallengeSchema = z.object({
+  stellarAddress: stellarAddressSchema,
+  email: z.string().email("Email inválido").optional(),
+});
+
+export const walletVerifySchema = z.object({
+  stellarAddress: stellarAddressSchema,
+  nonce: z.string().min(16, "Nonce inválido"),
+  signature: z.string().min(1, "Firma requerida"),
 });
 
 // ── Helper: validate request body ────────────────────────────────────

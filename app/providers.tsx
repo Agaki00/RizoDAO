@@ -34,7 +34,7 @@ function AuthHandler({ children }: { children: React.ReactNode }) {
         .then((res) => res.json())
         .then(async (data) => {
           if (wallet.email) {
-            await migrateGuestProfile({ email: wallet.email });
+            await migrateGuestProfile();
           }
           if (data.isNew) {
             router.push("/onboarding");

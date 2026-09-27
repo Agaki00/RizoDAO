@@ -8,6 +8,9 @@
 
 export const GUEST_PROFILE_KEY = "rizo_guest_profile";
 
+/** Where the wallet signature-challenge bearer token is cached client-side. */
+export const WALLET_TOKEN_STORAGE_KEY = "rizo_wallet_token";
+
 export type GuestCurlProfile = {
   rol: string;
   tipoCabello: string;
@@ -39,30 +42,40 @@ export function clearGuestProfile(): void {
   localStorage.removeItem(GUEST_PROFILE_KEY);
 }
 
+function readWalletToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(WALLET_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Migrate the guest profile to the user's database account.
- * Sends the stored quiz answers to /api/user/update using the provided
- * identity headers, then clears localStorage on success.
  *
- * @param identity  Either { email } or { userId }
+ * The client no longer sends an identity: /api/user/update resolves it on the
+ * server from the NextAuth session cookie, or from the `Authorization: Bearer`
+ * token that wallet-only users receive from /api/auth/wallet/verify (stored
+ * under WALLET_TOKEN_STORAGE_KEY).
+ *
  * @returns true if migrated, false if there was nothing to migrate or it failed
  */
-export async function migrateGuestProfile(
-  identity: { email?: string; userId?: string }
-): Promise<boolean> {
+export async function migrateGuestProfile(): Promise<boolean> {
   const profile = getGuestProfile();
   if (!profile) return false;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (identity.email) headers["x-user-email"] = identity.email;
-  if (identity.userId) headers["x-user-id"] = identity.userId;
+  const walletToken = readWalletToken();
+  if (walletToken) headers.Authorization = `Bearer ${walletToken}`;
 
   try {
     const res = await fetch("/api/user/update", {
       method: "POST",
       headers,
+      credentials: "include",
       body: JSON.stringify({
         nombre: profile.nombre,
         bio: profile.bio,

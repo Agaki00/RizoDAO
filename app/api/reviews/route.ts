@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { getAuthUser } from "@/lib/getAuthUser";
 import { addTokens } from "@/lib/loyaltyContract";
 import { decryptSecret } from "@/lib/encryption";
 
@@ -9,7 +10,6 @@ const prisma = new PrismaClient();
 const REVIEW_REWARD_TOKENS = 5;
 
 const createReviewSchema = z.object({
-  userEmail: z.string().email("Email inválido"),
   productId: z.string().min(1, "productId es requerido"),
   rating: z
     .number()
@@ -21,6 +21,13 @@ const createReviewSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Identity is resolved on the server (NextAuth session or wallet token);
+  // the client can no longer claim an account through a body email.
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
 
@@ -33,15 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { userEmail, productId, rating, content, curlType } = parsed.data;
-
-    const user = await prisma.user.findUnique({ where: { email: userEmail } });
-    if (!user) {
-      return NextResponse.json(
-        { error: "Usuario no encontrado" },
-        { status: 404 }
-      );
-    }
+    const { productId, rating, content, curlType } = parsed.data;
 
     const product = await prisma.product.findUnique({
       where: { id: productId },

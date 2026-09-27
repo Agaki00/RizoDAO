@@ -173,6 +173,19 @@ model Follow {
   @@index([followingId])
 }
 
+model WalletChallenge {
+  id        String    @id @default(cuid())
+  address   String
+  nonce     String    @unique
+  message   String
+  email     String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([address])
+}
+
 enum Role {
   RIZADA
   MARCA

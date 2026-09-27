@@ -32,7 +32,7 @@ export default function AuthModal({ onClose }: Props) {
         return;
       }
       // Migrate any quiz results the user completed as a guest
-      await migrateGuestProfile({ email });
+      await migrateGuestProfile();
       onClose();
       router.refresh();
       router.push("/comunidad");
