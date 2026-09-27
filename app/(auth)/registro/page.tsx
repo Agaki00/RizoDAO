@@ -40,7 +40,7 @@ export default function RegistroPage() {
       }
 
       // Migrate any quiz results the user completed as a guest
-      await migrateGuestProfile({ email });
+      await migrateGuestProfile();
 
       router.push("/onboarding");
     } catch {

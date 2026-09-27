@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import CredentialsTab from "@/components/profile/CredentialsTab";
 import FollowButton from "@/components/perfil/FollowButton";
-import { getFollowingCount, getFollowerCount, isFollowing } from "@/lib/mockFollow";
 
 type UserProfile = {
   id: string;
@@ -148,26 +147,33 @@ export default function PerfilPage() {
       ? `email=${encodeURIComponent(userEmail as string)}`
       : `id=${encodeURIComponent(viewedUserId as string)}`;
 
-    fetch(`/api/user/me?${query}`)
-      .then((r) => r.json())
-      .then((data) => {
+    const cargar = async () => {
+      try {
+        const res = await fetch(`/api/user/me?${query}`);
+        const data = await res.json();
         if (!data.id) return;
         setPerfil(data);
 
-        // Follow state and counters are derived from the profile just
-        // loaded (mocked locally until #12's API lands — see lib/mockFollow.ts).
-        setFollowerCount(getFollowerCount(data.id));
-        setFollowingCount(
-          isOwnProfile && userEmail
-            ? getFollowingCount(userEmail)
-            : getFollowingCount(data.email),
+        // Follow state and counters come from the persisted Follow table
+        // (GET /api/usuarios/[id]/seguidores) instead of localStorage.
+        const relRes = await fetch(
+          `/api/usuarios/${encodeURIComponent(data.id)}/seguidores`,
+          { headers: userEmail ? { "x-user-email": userEmail } : {} },
         );
-        if (!isOwnProfile && userEmail) {
-          setFollowing(isFollowing(userEmail, data.id));
+        if (relRes.ok) {
+          const rel = await relRes.json();
+          if (typeof rel.followers === "number") setFollowerCount(rel.followers);
+          if (typeof rel.following === "number") setFollowingCount(rel.following);
+          if (!isOwnProfile) setFollowing(Boolean(rel.isFollowing));
         }
-      })
-      .catch(console.error)
-      .finally(() => setCargando(false));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargar();
   }, [isOwnProfile, userEmail, viewedUserId]);
 
   if (isOwnProfile && !userEmail) {
@@ -354,9 +360,31 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {tab === "credenciales" && perfil?.role === "ESTILISTA" && (
-        <CredentialsTab walletAddress={perfil?.stellarPublicKey} />
-      )}
+      {/* Credenciales SBT: estados distinguibles (rol, wallet y on-chain) */}
+      {tab === "credenciales" &&
+        (perfil?.role !== "ESTILISTA" ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <span className="text-4xl mb-4">🎖️</span>
+            <p className="text-sm font-semibold text-[#3E2723]">
+              Las credenciales SBT son exclusivas de estilistas
+            </p>
+            <p className="text-xs text-[#A1887F] mt-1">
+              Cambia el rol de tu cuenta a ESTILISTA para obtener credenciales verificadas on-chain
+            </p>
+          </div>
+        ) : perfil?.stellarPublicKey ? (
+          <CredentialsTab walletAddress={perfil.stellarPublicKey} />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <span className="text-4xl mb-4">🔗</span>
+            <p className="text-sm font-semibold text-[#3E2723]">
+              Conecta tu wallet Stellar
+            </p>
+            <p className="text-xs text-[#A1887F] mt-1">
+              Necesitas una wallet Stellar vinculada a tu perfil para consultar o emitir credenciales SBT
+            </p>
+          </div>
+        ))}
 
       {/* Modal Editar Perfil */}
       {isEditing && (

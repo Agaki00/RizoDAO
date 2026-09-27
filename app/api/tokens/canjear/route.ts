@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
-  const user = await getAuthUser();
+  const user = await getAuthUser(req);
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

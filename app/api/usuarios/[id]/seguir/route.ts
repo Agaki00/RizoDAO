@@ -1,25 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getAuthUser } from "@/lib/getAuthUser";
 
 const prisma = new PrismaClient();
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-async function getCurrentUser(req: NextRequest) {
-  const userId = req.headers.get("x-user-id");
-  const userEmail = req.headers.get("x-user-email");
-
-  if (!userId && !userEmail) return null;
-
-  return prisma.user.findUnique({
-    where: userId ? { id: userId } : { email: userEmail as string },
-    select: { id: true },
-  });
-}
-
 export async function POST(req: NextRequest, { params }: RouteContext) {
   try {
-    const currentUser = await getCurrentUser(req);
+    // Identity comes from the server session (or a verified wallet token).
+    const currentUser = await getAuthUser(req);
     if (!currentUser) {
       return NextResponse.json({ error: "Usuario no autenticado" }, { status: 401 });
     }
@@ -56,7 +46,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(req: NextRequest, { params }: RouteContext) {
   try {
-    const currentUser = await getCurrentUser(req);
+    const currentUser = await getAuthUser(req);
     if (!currentUser) {
       return NextResponse.json({ error: "Usuario no autenticado" }, { status: 401 });
     }

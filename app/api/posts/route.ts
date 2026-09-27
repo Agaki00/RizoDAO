@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { getAuthUser } from "@/lib/getAuthUser";
+import { prisma } from "@/lib/db";
+import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
   validateBody,
@@ -8,24 +11,55 @@ import {
   paginationSchema,
 } from "@/lib/validations";
 
-const prisma = new PrismaClient();
+/**
+ * Feed query. `feed=siguiendo` returns only posts authored by users the viewer
+ * follows, resolved from the persisted Follow table (lib/mockFollow.ts is gone).
+ */
+const postsQuerySchema = paginationSchema.extend({
+  feed: z.enum(["todos", "siguiendo"]).default("todos"),
+});
 
 export async function GET(req: NextRequest) {
   // Rate limit
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
-  // Validate pagination params
+  // Validate pagination + feed params
   const { data: params, error: valError } = validateSearchParams(
     req,
-    paginationSchema
+    postsQuerySchema
   );
   if (valError) return valError;
 
-  const { cursor, limit } = params!;
+  const { cursor, limit, feed } = params!;
 
   try {
-    const query: Parameters<typeof prisma.post.findMany>[0] = {
+    let where: Prisma.PostWhereInput | undefined;
+    let followingCount: number | null = null;
+
+    if (feed === "siguiendo") {
+      const viewer = await getAuthUser(req);
+
+      if (!viewer) {
+        // Not signed in (or unknown viewer): the "Siguiendo" feed is empty.
+        return NextResponse.json({
+          posts: [],
+          nextCursor: null,
+          hasMore: false,
+          feed,
+          followingCount: 0,
+        });
+      }
+
+      // Posts whose author is followed by the viewer — one SQL join, no
+      // client-side filtering and no localStorage.
+      where = { user: { followers: { some: { followerId: viewer.id } } } };
+      followingCount = await prisma.follow.count({
+        where: { followerId: viewer.id },
+      });
+    }
+
+    const query: Prisma.PostFindManyArgs = {
       orderBy: { createdAt: "desc" },
       take: limit + 1, // fetch one extra to detect next page
       include: {
@@ -40,12 +74,9 @@ export async function GET(req: NextRequest) {
           },
         },
       },
+      ...(where ? { where } : {}),
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     };
-
-    if (cursor) {
-      query.cursor = { id: cursor };
-      query.skip = 1; // skip the cursor item itself
-    }
 
     const posts = await prisma.post.findMany(query);
 
@@ -57,6 +88,8 @@ export async function GET(req: NextRequest) {
       posts: result,
       nextCursor,
       hasMore,
+      feed,
+      followingCount,
     });
   } catch (error) {
     console.error("Error obteniendo posts:", error);
@@ -69,24 +102,19 @@ export async function POST(req: NextRequest) {
   const rlError = checkRateLimit(req);
   if (rlError) return rlError;
 
+  // Identity is resolved from the server session (or a verified wallet token).
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   // Validate body
   const { data, error: valError } = await validateBody(req, createPostSchema);
   if (valError) return valError;
 
-  const { contenido, userEmail } = data!;
+  const { contenido } = data!;
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Usuario no encontrado" },
-        { status: 404 }
-      );
-    }
-
     // Crear post
     const post = await prisma.post.create({
       data: {

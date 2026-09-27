@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getAuthUser } from "@/lib/getAuthUser";
+import { diagnosticoSchema, validateBody } from "@/lib/validations";
 
 // GET /api/diagnostico?hairType=3A&porosity=media&thickness=media&length=largo
 // Retorna productos filtrados por perfil capilar
@@ -34,25 +36,28 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/diagnostico
-// Guarda el perfil de rizo validado
+// Guarda el perfil de rizo validado para el usuario autenticado.
 export async function POST(req: NextRequest) {
+  // Identity is resolved on the server; the client cannot update another
+  // account by sending its email.
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  const { data, error: valError } = await validateBody(req, diagnosticoSchema);
+  if (valError) return valError;
+
   try {
-    const body = await req.json();
-    const { email, hairType, porosity, thickness, length, curlPattern } = body;
-
-    const userEmail = email;
+    const { hairType, curlPattern, porosity, thickness, length } = data!;
     const finalPattern = curlPattern || hairType;
-
-    if (!userEmail) {
-      return NextResponse.json({ error: "Email requerido" }, { status: 400 });
-    }
 
     const profileString = [finalPattern, porosity, thickness, length]
       .filter(Boolean)
       .join("|");
 
     await prisma.user.update({
-      where: { email: userEmail },
+      where: { id: user.id },
       data: { hairType: profileString },
     });
 

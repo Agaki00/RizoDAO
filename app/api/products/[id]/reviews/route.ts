@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getAuthUser } from "@/lib/getAuthUser";
+import { productReviewFormSchema } from "@/lib/validations";
 
 const prisma = new PrismaClient();
 
@@ -25,36 +27,33 @@ export async function GET(
 }
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Identity must come from a verified session/token, never from form data.
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   try {
     const formData = await req.formData();
-    const rating = parseInt(formData.get("rating") as string, 10);
-    const content = (formData.get("content") as string) || null;
-    const curlType = formData.get("curlType") as string;
+
+    const parsed = productReviewFormSchema.safeParse({
+      rating: formData.get("rating"),
+      content: (formData.get("content") as string) || undefined,
+      curlType: formData.get("curlType"),
+    });
+
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
+      return NextResponse.json({ error: firstIssue.message }, { status: 400 });
+    }
+
+    const { rating, content, curlType } = parsed.data;
     const imageFile = formData.get("image") as File | null;
-
-    if (!rating || rating < 1 || rating > 5) {
-      return NextResponse.json({ error: "Calificacion invalida (1-5)" }, { status: 400 });
-    }
-
-    if (!curlType || !/^[2-4][A-C]$/.test(curlType)) {
-      return NextResponse.json({ error: "Tipo de rizo invalido" }, { status: 400 });
-    }
-
-    const userEmail = formData.get("userEmail") as string;
-
-    let userId: string | undefined;
-    if (userEmail) {
-      const user = await prisma.user.findUnique({ where: { email: userEmail } });
-      if (user) userId = user.id;
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 401 });
-    }
 
     let imageUrl: string | null = null;
     if (imageFile && imageFile.size > 0) {
@@ -68,10 +67,10 @@ export async function POST(
 
     const review = await prisma.review.create({
       data: {
-        userId,
+        userId: user.id,
         productId: id,
         rating,
-        content,
+        content: content ?? null,
         curlType,
         imageUrl,
       },
@@ -98,7 +97,7 @@ export async function POST(
 
     await prisma.tokenTransaction.create({
       data: {
-        userId,
+        userId: user.id,
         amount: tokensEarned,
         type: "RESENA",
         reason: "Resena de producto",
@@ -106,7 +105,7 @@ export async function POST(
     });
 
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: user.id },
       data: { tokens: { increment: tokensEarned } },
     });
 

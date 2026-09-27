@@ -63,11 +63,15 @@ model Purchase {
   productName   String
   precioUSDC    Float
   tokensGanados Int
-  stellarTxHash String
-  status        String   @default("completed")
+  /// Stellar transaction hash. Unique so a blockchain payment can credit an
+  /// order at most once (idempotency). Null while the order is still PENDING.
+  stellarTxHash String?  @unique
+  /// PENDING -> COMPLETED on confirmed Horizon submission, FAILED if unrecoverable.
+  status        String   @default("PENDING")
   createdAt     DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([status])
 }
 
 model Post {
@@ -179,6 +183,19 @@ model Follow {
 
   @@id([followerId, followingId])
   @@index([followingId])
+}
+
+model WalletChallenge {
+  id        String    @id @default(cuid())
+  address   String
+  nonce     String    @unique
+  message   String
+  email     String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([address])
 }
 
 enum Role {

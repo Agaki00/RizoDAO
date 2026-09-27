@@ -29,7 +29,7 @@ export default function LoginPage() {
       }
 
       // Migrate any quiz results the user completed as a guest
-      await migrateGuestProfile({ email });
+      await migrateGuestProfile();
 
       router.push("/comunidad");
     } catch {
