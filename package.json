@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma migrate deploy && next build",
-    "start": "next start",
+    "dev": "node init && next dev",
+    "build": "node init && prisma migrate deploy && next build",
+    "start": "node init && next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "seed": "ts-node --project tsconfig.seed.json prisma/seed.ts"
