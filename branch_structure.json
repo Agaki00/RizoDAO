@@ -1,0 +1,18 @@
+{
+  "default_branch": "develop",
+  "branches": [
+    "develop",
+    "feature/multi-item-cart",
+    "origin"
+  ],
+  "parent": {
+    "develop": null,
+    "feature/multi-item-cart": "develop",
+    "origin": "develop"
+  },
+  "order": [
+    "develop",
+    "feature/multi-item-cart",
+    "origin"
+  ]
+}
